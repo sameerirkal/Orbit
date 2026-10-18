@@ -1,42 +1,38 @@
-# Orbit — Starter Project
+# Orbit
 
-Orbit is a modern goal and project management app. This repository is the **initial UI foundation**: responsive dashboard shell, sidebar navigation, top bar, and sample dashboard content.
-
-> This is a frontend starter. Login, cloud database, real goal/task persistence, and deployment are **not implemented yet**.
+Orbit is a goal, project, and task workspace built with Next.js and Supabase.
+Users can sign up, manage goals, tasks, and projects, see deadlines in a calendar, and review progress in analytics.
 
 ## Requirements
-- Node.js 20 or newer
+
+- Node.js 20 or later
 - npm
+- A Supabase project
 
-## Run locally
-1. Download and unzip this project.
-2. Open a terminal inside the `orbit-starter` folder.
-3. Install packages:
-   ```bash
-   npm install
-   ```
-4. Start the development server:
-   ```bash
-   npm run dev
-   ```
-5. Open `http://localhost:3000`.
+## Local setup
 
-## Build check
+1. Install dependencies with `npm install`.
+2. Copy `.env.example` to `.env.local`.
+3. In `.env.local`, add your Supabase project URL and **anon** key. Never use or expose the service-role key in this app.
+4. Apply the SQL migration at `supabase/migrations/20261018000000_create_orbit_schema.sql` using the Supabase CLI or SQL Editor.
+5. Start the app with `npm run dev` and open `http://localhost:3000`.
+
+## Checks
+
 ```bash
+npm run lint
 npm run build
 ```
 
-## Upload to GitHub (easy method)
-1. Sign in to GitHub and create a new **empty repository** named `orbit`.
-2. Keep it public or private as you prefer. Do not add a README or license during repository creation, because this folder already has a README.
-3. On the new repository page, choose **Add file → Upload files**.
-4. Upload the *contents* of the unzipped `orbit-starter` folder (including `app`, `components`, and hidden files such as `.gitignore` if the upload interface allows them).
-5. Commit the upload.
+## Security notes
 
-For ongoing updates, Git is more convenient than re-uploading files, but it is optional for this first upload.
+- The database migration enables Row Level Security. Every authenticated user can only access rows whose `user_id` matches their account.
+- `.env.local`, build output, logs, and dependencies are excluded by `.gitignore`.
+- Public `NEXT_PUBLIC_` values are safe to ship to the browser only when Supabase RLS policies are enabled. Never commit a Supabase service-role key.
 
-## Important
-- Do not upload `.env` files, passwords, API keys, or other secrets.
-- `.env.example` is a safe template and contains no real credentials.
-- Dashboard numbers and sample cards are demonstration UI only, not stored user data.
-- The app currently uses browser-side UI state only; refresh-safe storage and user accounts will be added later.
+## Deployment checklist
+
+1. Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in the hosting provider.
+2. Apply the database migration to the production Supabase project.
+3. Verify email-confirmation settings and permitted redirect URLs in Supabase Auth.
+4. Run lint and production build before deploying.

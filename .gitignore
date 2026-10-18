@@ -1,0 +1,17 @@
+# Dependencies and build output
+node_modules/
+.next/
+out/
+
+# Local environment files — never commit credentials
+.env
+.env.*
+!.env.example
+
+# Local tooling and logs
+*.log
+.DS_Store
+.vercel/
+
+# TypeScript incremental build data
+*.tsbuildinfo

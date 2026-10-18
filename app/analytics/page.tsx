@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -45,7 +45,7 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  async function loadAnalytics() {
+  const loadAnalytics = useCallback(async () => {
     setLoading(true);
     setError("");
 
@@ -94,11 +94,11 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [router]);
 
   useEffect(() => {
     void loadAnalytics();
-  }, []);
+  }, [loadAnalytics]);
 
   const completedTasks = tasks.filter(
     (task) => task.completed === true
