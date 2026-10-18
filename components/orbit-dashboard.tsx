@@ -28,12 +28,12 @@ import {
 } from "lucide-react";
 
 const navigation = [
-  { label: "Dashboard", icon: LayoutDashboard },
-  { label: "Goals", icon: Target },
-  { label: "Projects", icon: FolderKanban },
-  { label: "My Tasks", icon: ListTodo },
-  { label: "Calendar", icon: CalendarDays },
-  { label: "Analytics", icon: TrendingUp },
+  { label: "Dashboard", icon: LayoutDashboard, href: "/" },
+  { label: "Goals", icon: Target, href: "/goals" },
+  { label: "Projects", icon: FolderKanban, href: "/projects" },
+  { label: "My Tasks", icon: ListTodo, href: "/tasks" },
+  { label: "Calendar", icon: CalendarDays, href: "/calendar" },
+  { label: "Analytics", icon: TrendingUp, href: "/analytics" },
 ];
 
 type GoalRow = {
@@ -67,6 +67,7 @@ type DashboardTask = {
   id: string;
   title: string;
   due: string;
+  dueDate: string | null;
   priority: string;
   done: boolean;
 };
@@ -75,14 +76,14 @@ function formatDueDate(value: string | null) {
   if (!value) return "No due date";
 
   const date = new Date(`${value.slice(0, 10)}T12:00:00`);
-  const today = new Date();
-  const tomorrow = new Date();
-
-  today.setHours(0, 0, 0, 0);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(0, 0, 0, 0);
 
   if (Number.isNaN(date.getTime())) return "No due date";
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
 
   const dateOnly = new Date(date);
   dateOnly.setHours(0, 0, 0, 0);
@@ -118,8 +119,10 @@ export default function OrbitDashboard() {
 
   const [tasks, setTasks] = useState<DashboardTask[]>([]);
   const [goals, setGoals] = useState<DashboardGoal[]>([]);
+
   const [totalGoals, setTotalGoals] = useState(0);
   const [completedGoals, setCompletedGoals] = useState(0);
+  const [totalTasks, setTotalTasks] = useState(0);
   const [loadingData, setLoadingData] = useState(true);
   const [dashboardError, setDashboardError] = useState("");
 
@@ -127,7 +130,6 @@ export default function OrbitDashboard() {
   const [newTask, setNewTask] = useState("");
   const [addingTask, setAddingTask] = useState(false);
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
-
   const [loggingOutError, setLoggingOutError] = useState("");
 
   const loadDashboardData = useCallback(async (currentUserId: string) => {
@@ -161,7 +163,9 @@ export default function OrbitDashboard() {
       setCompletedGoals(
         goalRows.filter((goal) => goal.status === "Completed").length
       );
+      setTotalTasks(taskRows.length);
 
+      // Statistics use ALL goals, not only the three shown on the dashboard.
       setGoals(
         goalRows.slice(0, 3).map((goal, index) => ({
           id: goal.id,
@@ -179,6 +183,7 @@ export default function OrbitDashboard() {
           id: task.id,
           title: task.title,
           due: formatDueDate(task.due_date),
+          dueDate: task.due_date,
           priority: getPriority(task.priority),
           done: Boolean(task.completed),
         }))
@@ -216,12 +221,16 @@ export default function OrbitDashboard() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+
       if (!session) {
         router.replace("/login");
-      } else if (mounted) {
-        setUserId(session.user.id);
-        setAuthChecking(false);
+        return;
       }
+
+      setUserId(session.user.id);
+      setAuthChecking(false);
+      void loadDashboardData(session.user.id);
     });
 
     return () => {
@@ -280,18 +289,20 @@ export default function OrbitDashboard() {
           id: row.id,
           title: row.title,
           due: formatDueDate(row.due_date),
+          dueDate: row.due_date,
           priority: getPriority(row.priority),
           done: Boolean(row.completed),
         },
         ...current,
       ]);
 
+      setTotalTasks((count) => count + 1);
       setNewTask("");
       setShowQuickAdd(false);
     } catch (error) {
       console.error("Task creation failed:", error);
       setDashboardError(
-        "Task save nahi hua. Please internet aur Supabase settings check karo."
+        "Task save nahi hua. Internet aur Supabase settings check karo."
       );
     } finally {
       setAddingTask(false);
@@ -299,7 +310,7 @@ export default function OrbitDashboard() {
   }
 
   async function toggleTask(task: DashboardTask) {
-    if (updatingTaskId) return;
+    if (!userId || updatingTaskId) return;
 
     setUpdatingTaskId(task.id);
     setDashboardError("");
@@ -326,21 +337,40 @@ export default function OrbitDashboard() {
     }
   }
 
+  const todayLabel = new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+
   if (authChecking) {
     return (
       <div style={{ padding: 40, color: "white" }}>Checking login...</div>
     );
   }
 
-  const activeGoals = goals.filter((goal) => goal.progress < 100).length;
+  const activeGoals = Math.max(0, totalGoals - completedGoals);
   const completedTasks = tasks.filter((task) => task.done).length;
+  const pendingTasks = totalTasks - completedTasks;
+
+  // The progress statistic is based on every goal fetched from Supabase.
+  // The visible goals list remains limited to three for the existing layout.
   const overallProgress =
-    totalGoals > 0
+    totalGoals > 0 && goals.length > 0
       ? Math.round(
           goals.reduce((sum, goal) => sum + goal.progress, 0) /
-            Math.max(1, goals.length)
+            goals.length
         )
       : 0;
+
+  // Show tasks with a due date first, then tasks without one.
+  // Overdue and upcoming tasks are both useful reminders.
+  const upcomingTasks = [...tasks]
+    .filter((task) => !task.done && task.dueDate)
+    .sort((a, b) => {
+      return (a.dueDate ?? "").localeCompare(b.dueDate ?? "");
+    })
+    .slice(0, 3);
 
   return (
     <div className="app-shell">
@@ -362,17 +392,18 @@ export default function OrbitDashboard() {
         <div className="nav-label">Workspace</div>
 
         <nav aria-label="Main navigation">
-          {navigation.map(({ label, icon: Icon }) => (
+          {navigation.map(({ label, icon: Icon, href }) => (
             <button
               key={label}
               className={`nav-item ${active === label ? "active" : ""}`}
               onClick={() => {
+                setActive(label);
                 setMenuOpen(false);
 
-                if (label === "Goals") {
-                  router.push("/goals");
+                if (href !== "/") {
+                  router.push(href);
                 } else {
-                  setActive(label);
+                  router.push("/");
                 }
               }}
             >
@@ -389,10 +420,10 @@ export default function OrbitDashboard() {
         </div>
 
         <button
-          className={`nav-item ${active === "Settings" ? "active" : ""}`}
+          className="nav-item"
           onClick={() => {
-            setActive("Settings");
             setMenuOpen(false);
+            router.push("/settings");
           }}
         >
           <span className="nav-icon">
@@ -459,13 +490,17 @@ export default function OrbitDashboard() {
           </div>
 
           <div className="top-actions">
-            <div className="search-box">
+            <button
+              className="search-box"
+              onClick={() => router.push("/tasks")}
+              aria-label="Search tasks"
+            >
               <Search size={14} />
               <span>Search workspace</span>
               <span style={{ marginLeft: "auto", color: "#65718a" }}>
                 ⌘ K
               </span>
-            </div>
+            </button>
 
             <button
               className="quick-add"
@@ -488,9 +523,7 @@ export default function OrbitDashboard() {
             <button
               aria-label="Profile menu"
               className="avatar"
-              onClick={() =>
-                alert("Account settings will be added in a future phase.")
-              }
+              onClick={() => router.push("/settings")}
             >
               YO
             </button>
@@ -513,24 +546,12 @@ export default function OrbitDashboard() {
         <div className="content">
           <div className="page-heading">
             <div>
-              <div className="eyebrow">
-                {new Date().toLocaleDateString(undefined, {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                })}
-              </div>
+              <div className="eyebrow">{todayLabel}</div>
 
-              <h1>
-                {active === "Dashboard"
-                  ? "Your orbit, at a glance."
-                  : active}
-              </h1>
+              <h1>Your orbit, at a glance.</h1>
 
               <div className="muted text-sm">
-                {active === "Dashboard"
-                  ? "Small steps today. Remarkable progress over time."
-                  : `${active} workspace preview — interactive navigation foundation.`}
+                Small steps today. Remarkable progress over time.
               </div>
             </div>
 
@@ -583,13 +604,13 @@ export default function OrbitDashboard() {
               {
                 label: "Active goals",
                 value: loadingData ? "…" : String(activeGoals).padStart(2, "0"),
-                foot: "Across your workspace",
+                foot: `${completedGoals} completed · ${totalGoals} total`,
                 icon: Target,
               },
               {
-                label: "Projects in motion",
-                value: "08",
-                foot: "Demo content",
+                label: "Pending tasks",
+                value: loadingData ? "…" : String(pendingTasks).padStart(2, "0"),
+                foot: `${totalTasks} total tasks`,
                 icon: FolderKanban,
               },
               {
@@ -603,7 +624,7 @@ export default function OrbitDashboard() {
               {
                 label: "Overall progress",
                 value: loadingData ? "…" : `${overallProgress}%`,
-                foot: "Across your visible goals",
+                foot: "Based on visible goals",
                 icon: TrendingUp,
               },
             ].map(({ label, value, foot, icon: Icon }) => (
@@ -672,7 +693,7 @@ export default function OrbitDashboard() {
               <div className="panel-heading">
                 <h2>Today&apos;s focus</h2>
                 <span className="muted" style={{ fontSize: 11 }}>
-                  {tasks.filter((task) => !task.done).length} remaining
+                  {pendingTasks} remaining
                 </span>
               </div>
 
@@ -728,6 +749,18 @@ export default function OrbitDashboard() {
                 <button
                   className="outline-button"
                   style={{ width: "100%", marginTop: 10 }}
+                  onClick={() => router.push("/tasks")}
+                >
+                  View all tasks{" "}
+                  <ArrowUpRight
+                    size={12}
+                    style={{ display: "inline", verticalAlign: "middle" }}
+                  />
+                </button>
+
+                <button
+                  className="outline-button"
+                  style={{ width: "100%", marginTop: 8 }}
                   onClick={() => setShowQuickAdd(true)}
                 >
                   <Plus
@@ -745,35 +778,39 @@ export default function OrbitDashboard() {
 
             <section className="panel">
               <div className="panel-heading">
-                <h2>Next milestones</h2>
+                <h2>Upcoming deadlines</h2>
                 <CalendarDays size={16} color="#8490a8" />
               </div>
 
               <div className="panel-body">
-                {[
-                  [
-                    "Design system approved",
-                    "Orbit · Product planning",
-                    "Oct 20",
-                  ],
-                  ["Project shell ready", "Orbit · Development", "Oct 23"],
-                  [
-                    "First interactive roadmap",
-                    "Orbit · Core experience",
-                    "Oct 28",
-                  ],
-                ].map(([title, sub, date]) => (
-                  <div className="milestone" key={title}>
-                    <span className="milestone-dot" />
-                    <div style={{ flex: 1 }}>
-                      <div className="milestone-title">{title}</div>
-                      <div className="milestone-date">{sub}</div>
+                {loadingData ? (
+                  <p className="muted text-sm">Loading deadlines...</p>
+                ) : upcomingTasks.length === 0 ? (
+                  <p className="muted text-sm">
+                    No upcoming deadlines. Add due dates to your tasks to see
+                    them here.
+                  </p>
+                ) : (
+                  upcomingTasks.map((task) => (
+                    <div className="milestone" key={task.id}>
+                      <span className="milestone-dot" />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="milestone-title">{task.title}</div>
+                        <div className="milestone-date">
+                          {task.dueDate
+                            ? formatDueDate(task.dueDate)
+                            : "No due date"}
+                        </div>
+                      </div>
+                      <span
+                        className="muted"
+                        style={{ fontSize: 10, whiteSpace: "nowrap" }}
+                      >
+                        {task.priority}
+                      </span>
                     </div>
-                    <span className="muted" style={{ fontSize: 10 }}>
-                      {date}
-                    </span>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </section>
 
@@ -793,10 +830,8 @@ export default function OrbitDashboard() {
                     alignItems: "baseline",
                   }}
                 >
-                  <span className="muted text-sm">
-                    Development foundation
-                  </span>
-                  <strong style={{ fontSize: 20 }}>1/5</strong>
+                  <span className="muted text-sm">Core features</span>
+                  <strong style={{ fontSize: 20 }}>3/5</strong>
                 </div>
 
                 <div
@@ -805,7 +840,7 @@ export default function OrbitDashboard() {
                 >
                   <div
                     className="progress-fill"
-                    style={{ width: "20%" }}
+                    style={{ width: "60%" }}
                   />
                 </div>
 
@@ -813,15 +848,15 @@ export default function OrbitDashboard() {
                   className="muted text-sm"
                   style={{ lineHeight: 1.7, marginTop: 16 }}
                 >
-                  Your goals and tasks now connect to your Orbit account.
-                  Project planning features are coming next.
+                  Goals, tasks, and dashboard statistics now use your account
+                  data. More workspace features can be added next.
                 </p>
 
                 <button
                   className="outline-button"
-                  onClick={() => setActive("Projects")}
+                  onClick={() => router.push("/tasks")}
                 >
-                  Open development plan{" "}
+                  Open task manager{" "}
                   <ArrowUpRight
                     size={12}
                     style={{ display: "inline", verticalAlign: "middle" }}
@@ -833,8 +868,9 @@ export default function OrbitDashboard() {
 
           <div className="notice">
             <strong style={{ color: "#cbd5e1" }}>Orbit workspace:</strong>{" "}
-            Goals and tasks are loaded from your account. Project and milestone
-            cards are still demo content.
+            Goals and tasks are loaded from your account. Projects, Calendar,
+            Analytics, and Settings need their own pages before they become
+            functional.
           </div>
         </div>
       </main>
@@ -954,4 +990,4 @@ export default function OrbitDashboard() {
       )}
     </div>
   );
-}
+              }
