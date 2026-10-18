@@ -34,6 +34,7 @@ const navigation = [
   { label: "My Tasks", icon: ListTodo, href: "/tasks" },
   { label: "Calendar", icon: CalendarDays, href: "/calendar" },
   { label: "Analytics", icon: TrendingUp, href: "/analytics" },
+  { label: "Settings", icon: Settings, href: "/settings" },
 ];
 
 type GoalRow = {
@@ -363,14 +364,41 @@ export default function OrbitDashboard() {
         )
       : 0;
 
-  // Show tasks with a due date first, then tasks without one.
-  // Overdue and upcoming tasks are both useful reminders.
-  const upcomingTasks = [...tasks]
-    .filter((task) => !task.done && task.dueDate)
-    .sort((a, b) => {
-      return (a.dueDate ?? "").localeCompare(b.dueDate ?? "");
+
+  // Separate overdue tasks from deadlines due in the next 7 days.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const todayKey = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, "0"),
+    String(today.getDate()).padStart(2, "0"),
+  ].join("-");
+
+  const nextWeek = new Date(today);
+  nextWeek.setDate(nextWeek.getDate() + 7);
+
+  const overdueTasks = tasks
+    .filter(
+      (task) => !task.done && task.dueDate && task.dueDate.slice(0, 10) < todayKey
+    )
+    .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));
+
+  const dueSoonTasks = tasks
+    .filter((task) => {
+      if (task.done || !task.dueDate) return false;
+
+      const dateKey = task.dueDate.slice(0, 10);
+      const nextWeekKey = [
+        nextWeek.getFullYear(),
+        String(nextWeek.getMonth() + 1).padStart(2, "0"),
+        String(nextWeek.getDate()).padStart(2, "0"),
+      ].join("-");
+
+      return dateKey >= todayKey && dateKey <= nextWeekKey;
     })
-    .slice(0, 3);
+    .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));
+
 
   return (
     <div className="app-shell">
@@ -783,34 +811,55 @@ export default function OrbitDashboard() {
               </div>
 
               <div className="panel-body">
-                {loadingData ? (
-                  <p className="muted text-sm">Loading deadlines...</p>
-                ) : upcomingTasks.length === 0 ? (
-                  <p className="muted text-sm">
-                    No upcoming deadlines. Add due dates to your tasks to see
-                    them here.
-                  </p>
-                ) : (
-                  upcomingTasks.map((task) => (
-                    <div className="milestone" key={task.id}>
-                      <span className="milestone-dot" />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div className="milestone-title">{task.title}</div>
-                        <div className="milestone-date">
-                          {task.dueDate
-                            ? formatDueDate(task.dueDate)
-                            : "No due date"}
-                        </div>
-                      </div>
-                      <span
-                        className="muted"
-                        style={{ fontSize: 10, whiteSpace: "nowrap" }}
-                      >
-                        {task.priority}
-                      </span>
-                    </div>
-                  ))
-                )}
+
+{loadingData ? (
+  <p className="muted text-sm">Loading deadlines...</p>
+) : overdueTasks.length === 0 && dueSoonTasks.length === 0 ? (
+  <p className="muted text-sm">
+    No upcoming deadlines. Add due dates to your tasks to see them here.
+  </p>
+) : (
+  <>
+    {overdueTasks.length > 0 && (
+      <div style={{ marginBottom: 16 }}>
+        <h3 style={{ color: "#f87171", marginBottom: 8 }}>
+          Overdue ({overdueTasks.length})
+        </h3>
+        {overdueTasks.map((task) => (
+          <div className="milestone" key={task.id}>
+            <span className="milestone-dot" style={{ background: "#f87171" }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="milestone-title">{task.title}</div>
+              <div className="milestone-date">
+                {formatDueDate(task.dueDate)}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+
+    {dueSoonTasks.length > 0 && (
+      <div>
+        <h3 style={{ marginBottom: 8 }}>
+          Due in the next 7 days ({dueSoonTasks.length})
+        </h3>
+        {dueSoonTasks.slice(0, 5).map((task) => (
+          <div className="milestone" key={task.id}>
+            <span className="milestone-dot" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="milestone-title">{task.title}</div>
+              <div className="milestone-date">
+                {formatDueDate(task.dueDate)}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </>
+)}
+
               </div>
             </section>
 
@@ -868,9 +917,9 @@ export default function OrbitDashboard() {
 
           <div className="notice">
             <strong style={{ color: "#cbd5e1" }}>Orbit workspace:</strong>{" "}
-            Goals and tasks are loaded from your account. Projects, Calendar,
-            Analytics, and Settings need their own pages before they become
-            functional.
+            Goals, tasks, and projects are saved in your account.
+            Calendar now brings task dates and project deadlines together.
+            Analytics and Settings can be added next.
           </div>
         </div>
       </main>
@@ -990,4 +1039,4 @@ export default function OrbitDashboard() {
       )}
     </div>
   );
-              }
+}

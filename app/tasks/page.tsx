@@ -160,7 +160,7 @@ export default function TasksPage() {
     if (result.error) {
       setError(`Task save nahi hua: ${result.error.message}`);
     } else {
-      setNotice(editingId ? "Task update ho gaya!" : "Naya task add ho gaya!");
+      setNotice(editingId ? "Task updated!" : "New task added!");
       resetForm();
       await loadData(userId);
     }
