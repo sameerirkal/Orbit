@@ -54,7 +54,7 @@ export default function OrbitDashboard() {
         <div className="nav-label">Workspace</div>
         <nav aria-label="Main navigation">
           {navigation.map(({ label, icon: Icon }) => (
-            <button key={label} className={`nav-item ${active === label ? "active" : ""}`} onClick={() => { setActive(label); setMenuOpen(false); }}>
+            <button key={label} className={`nav-item ${active === label ? "active" : ""}`} onClick={() => { setMenuOpen(false); if (label === "Goals") { window.location.href = "/goals"; } else { setActive(label); } }}>
               <span className="nav-icon"><Icon size={17} /></span><span>{label}</span>
             </button>
           ))}
@@ -66,7 +66,7 @@ export default function OrbitDashboard() {
             <Sparkles size={17} color="#a5b4fc" />
             <div style={{ fontSize: 12, fontWeight: 700, marginTop: 10 }}>Make room for big goals</div>
             <p>Your personal command center for turning plans into progress.</p>
-            <button className="outline-button" onClick={() => setActive("Goals")}>Explore goals <ArrowUpRight size={12} style={{ display: "inline", verticalAlign: "middle" }} /></button>
+            <button className="outline-button" onClick={() => { window.location.href = "/goals"; }}>Explore goals <ArrowUpRight size={12} style={{ display: "inline", verticalAlign: "middle" }} /></button>
           </div>
           <button className="nav-item" style={{ marginTop: 14 }} onClick={() => alert("Help center will be added in a future phase.")}><span className="nav-icon"><CircleHelp size={17} /></span>Help & feedback</button>
         </div>
@@ -93,7 +93,7 @@ export default function OrbitDashboard() {
               <h1>{active === "Dashboard" ? "Your orbit, at a glance." : active}</h1>
               <div className="muted text-sm">{active === "Dashboard" ? "Small steps today. Remarkable progress over time." : `${active} workspace preview — interactive navigation foundation.`}</div>
             </div>
-            <button className="outline-button" onClick={() => setActive("Goals")}><Target size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: 7 }} />View goals <ChevronDown size={13} style={{ display: "inline", verticalAlign: "middle", marginLeft: 5 }} /></button>
+            <button className="outline-button" onClick={() => { window.location.href = "/goals"; }}><Target size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: 7 }} />View goals <ChevronDown size={13} style={{ display: "inline", verticalAlign: "middle", marginLeft: 5 }} /></button>
           </div>
 
           <section className="stats-grid" aria-label="Workspace overview">
@@ -112,7 +112,7 @@ export default function OrbitDashboard() {
 
           <div className="dashboard-grid">
             <section className="panel">
-              <div className="panel-heading"><h2>Goals in motion</h2><button className="outline-button" onClick={() => setActive("Goals")}>All goals <ArrowUpRight size={12} style={{ display: "inline", verticalAlign: "middle" }} /></button></div>
+              <div className="panel-heading"><h2>Goals in motion</h2><button className="outline-button" onClick={() => { window.location.href = "/goals"; }}>All goals <ArrowUpRight size={12} style={{ display: "inline", verticalAlign: "middle" }} /></button></div>
               <div className="panel-body">
                 {goals.map(({ icon: Icon, title, subtitle, progress }) => (
                   <div className="goal-row" key={title}>
