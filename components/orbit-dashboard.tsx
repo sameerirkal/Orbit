@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -108,6 +109,80 @@ function getPriority(value: string | null) {
   return "medium";
 }
 
+const demoGoals: DashboardGoal[] = [
+  {
+    id: "demo-goal-1",
+    title: "Build a consistent routine",
+    subtitle: "Personal growth",
+    progress: 70,
+    icon: Compass,
+  },
+  {
+    id: "demo-goal-2",
+    title: "Launch a side project",
+    subtitle: "Target · This month",
+    progress: 45,
+    icon: Activity,
+  },
+  {
+    id: "demo-goal-3",
+    title: "Learn new skills",
+    subtitle: "Learning",
+    progress: 30,
+    icon: Flag,
+  },
+];
+
+const demoTasks: DashboardTask[] = [
+  {
+    id: "demo-task-1",
+    title: "Plan the week",
+    due: "Today",
+    dueDate: null,
+    priority: "high",
+    done: false,
+  },
+  {
+    id: "demo-task-2",
+    title: "Review project progress",
+    due: "Tomorrow",
+    dueDate: null,
+    priority: "medium",
+    done: false,
+  },
+  {
+    id: "demo-task-3",
+    title: "Read for 20 minutes",
+    due: "No due date",
+    dueDate: null,
+    priority: "low",
+    done: true,
+  },
+];
+
+function demoGoalRows(): GoalRow[] {
+  return demoGoals.map((goal) => ({
+    id: goal.id,
+    title: goal.title,
+    description: goal.subtitle,
+    progress: goal.progress,
+    status: "In Progress",
+    target_date: null,
+  }));
+}
+
+function demoTaskRows(): TaskRow[] {
+  return demoTasks.map((task) => ({
+    id: task.id,
+    title: task.title,
+    description: "",
+    goal_id: null,
+    priority: task.priority,
+    due_date: task.dueDate,
+    completed: task.done,
+  }));
+}
+
 export default function OrbitDashboard() {
   const router = useRouter();
 
@@ -120,6 +195,8 @@ export default function OrbitDashboard() {
 
   const [tasks, setTasks] = useState<DashboardTask[]>([]);
   const [goals, setGoals] = useState<DashboardGoal[]>([]);
+  const [searchTasks, setSearchTasks] = useState<TaskRow[]>([]);
+  const [searchGoals, setSearchGoals] = useState<GoalRow[]>([]);
 
   const [totalGoals, setTotalGoals] = useState(0);
   const [completedGoals, setCompletedGoals] = useState(0);
@@ -128,6 +205,8 @@ export default function OrbitDashboard() {
   const [dashboardError, setDashboardError] = useState("");
 
   const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [newTask, setNewTask] = useState("");
   const [addingTask, setAddingTask] = useState(false);
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
@@ -160,13 +239,15 @@ export default function OrbitDashboard() {
       const goalRows = (goalsResult.data ?? []) as GoalRow[];
       const taskRows = (tasksResult.data ?? []) as TaskRow[];
 
+      setSearchGoals(goalRows);
+      setSearchTasks(taskRows);
+
       setTotalGoals(goalRows.length);
       setCompletedGoals(
         goalRows.filter((goal) => goal.status === "Completed").length
       );
       setTotalTasks(taskRows.length);
 
-      // Statistics use ALL goals, not only the three shown on the dashboard.
       setGoals(
         goalRows.slice(0, 3).map((goal, index) => ({
           id: goal.id,
@@ -199,6 +280,19 @@ export default function OrbitDashboard() {
     }
   }, []);
 
+  const setDemoData = useCallback(() => {
+    setUserId(null);
+    setGoals(demoGoals);
+    setTasks(demoTasks);
+    setSearchGoals(demoGoalRows());
+    setSearchTasks(demoTaskRows());
+    setTotalGoals(demoGoals.length);
+    setCompletedGoals(0);
+    setTotalTasks(demoTasks.length);
+    setDashboardError("");
+    setLoadingData(false);
+  }, []);
+
   useEffect(() => {
     let mounted = true;
 
@@ -208,7 +302,8 @@ export default function OrbitDashboard() {
       if (!mounted) return;
 
       if (error || !data.user) {
-        router.replace("/login");
+        setDemoData();
+        setAuthChecking(false);
         return;
       }
 
@@ -225,7 +320,8 @@ export default function OrbitDashboard() {
       if (!mounted) return;
 
       if (!session) {
-        router.replace("/login");
+        setDemoData();
+        setAuthChecking(false);
         return;
       }
 
@@ -238,7 +334,29 @@ export default function OrbitDashboard() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [router, loadDashboardData]);
+  }, [loadDashboardData, setDemoData]);
+
+  useEffect(() => {
+    function handleSearchShortcut(event: KeyboardEvent) {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "k"
+      ) {
+        event.preventDefault();
+        setShowSearch((current) => !current);
+      }
+
+      if (event.key === "Escape") {
+        setShowSearch(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleSearchShortcut);
+
+    return () => {
+      window.removeEventListener("keydown", handleSearchShortcut);
+    };
+  }, []);
 
   async function handleLogout() {
     if (loggingOut) return;
@@ -254,7 +372,7 @@ export default function OrbitDashboard() {
       return;
     }
 
-    router.replace("/login");
+    router.replace("/");
     router.refresh();
   }
 
@@ -297,6 +415,7 @@ export default function OrbitDashboard() {
         ...current,
       ]);
 
+      setSearchTasks((current) => [row, ...current]);
       setTotalTasks((count) => count + 1);
       setNewTask("");
       setShowQuickAdd(false);
@@ -330,6 +449,14 @@ export default function OrbitDashboard() {
           item.id === task.id ? { ...item, done: !task.done } : item
         )
       );
+
+      setSearchTasks((current) =>
+        current.map((item) =>
+          item.id === task.id
+            ? { ...item, completed: !task.done }
+            : item
+        )
+      );
     } catch (error) {
       console.error("Task update failed:", error);
       setDashboardError("Task update nahi hua. Dobara try karo.");
@@ -337,6 +464,25 @@ export default function OrbitDashboard() {
       setUpdatingTaskId(null);
     }
   }
+
+  function closeSearch() {
+    setShowSearch(false);
+    setSearchQuery("");
+  }
+
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  const filteredTasks = searchTasks.filter((task) =>
+    `${task.title} ${task.description ?? ""}`
+      .toLowerCase()
+      .includes(normalizedQuery)
+  );
+
+  const filteredGoals = searchGoals.filter((goal) =>
+    `${goal.title} ${goal.description ?? ""}`
+      .toLowerCase()
+      .includes(normalizedQuery)
+  );
 
   const todayLabel = new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -346,26 +492,22 @@ export default function OrbitDashboard() {
 
   if (authChecking) {
     return (
-      <div style={{ padding: 40, color: "white" }}>Checking login...</div>
+      <div style={{ padding: 40, color: "white" }}>Loading Orbit...</div>
     );
   }
 
+  const isDemo = !userId;
   const activeGoals = Math.max(0, totalGoals - completedGoals);
   const completedTasks = tasks.filter((task) => task.done).length;
   const pendingTasks = totalTasks - completedTasks;
 
-  // The progress statistic is based on every goal fetched from Supabase.
-  // The visible goals list remains limited to three for the existing layout.
   const overallProgress =
     totalGoals > 0 && goals.length > 0
       ? Math.round(
-          goals.reduce((sum, goal) => sum + goal.progress, 0) /
-            goals.length
+          goals.reduce((sum, goal) => sum + goal.progress, 0) / goals.length
         )
       : 0;
 
-
-  // Separate overdue tasks from deadlines due in the next 7 days.
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -378,9 +520,16 @@ export default function OrbitDashboard() {
   const nextWeek = new Date(today);
   nextWeek.setDate(nextWeek.getDate() + 7);
 
+  const nextWeekKey = [
+    nextWeek.getFullYear(),
+    String(nextWeek.getMonth() + 1).padStart(2, "0"),
+    String(nextWeek.getDate()).padStart(2, "0"),
+  ].join("-");
+
   const overdueTasks = tasks
     .filter(
-      (task) => !task.done && task.dueDate && task.dueDate.slice(0, 10) < todayKey
+      (task) =>
+        !task.done && task.dueDate && task.dueDate.slice(0, 10) < todayKey
     )
     .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));
 
@@ -389,16 +538,9 @@ export default function OrbitDashboard() {
       if (task.done || !task.dueDate) return false;
 
       const dateKey = task.dueDate.slice(0, 10);
-      const nextWeekKey = [
-        nextWeek.getFullYear(),
-        String(nextWeek.getMonth() + 1).padStart(2, "0"),
-        String(nextWeek.getDate()).padStart(2, "0"),
-      ].join("-");
-
       return dateKey >= todayKey && dateKey <= nextWeekKey;
     })
     .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));
-
 
   return (
     <div className="app-shell">
@@ -420,45 +562,46 @@ export default function OrbitDashboard() {
         <div className="nav-label">Workspace</div>
 
         <nav aria-label="Main navigation">
-          {navigation.map(({ label, icon: Icon, href }) => (
-            <button
-              key={label}
-              className={`nav-item ${active === label ? "active" : ""}`}
-              onClick={() => {
-                setActive(label);
-                setMenuOpen(false);
-
-                if (href !== "/") {
+          {navigation
+            .filter(({ href }) => !isDemo || href !== "/settings")
+            .map(({ label, icon: Icon, href }) => (
+              <button
+                key={label}
+                className={`nav-item ${active === label ? "active" : ""}`}
+                onClick={() => {
+                  setActive(label);
+                  setMenuOpen(false);
                   router.push(href);
-                } else {
-                  router.push("/");
-                }
+                }}
+              >
+                <span className="nav-icon">
+                  <Icon size={17} />
+                </span>
+                <span>{label}</span>
+              </button>
+            ))}
+        </nav>
+
+        {!isDemo && (
+          <>
+            <div className="nav-label" style={{ marginTop: 22 }}>
+              Personal
+            </div>
+
+            <button
+              className="nav-item"
+              onClick={() => {
+                setMenuOpen(false);
+                router.push("/settings");
               }}
             >
               <span className="nav-icon">
-                <Icon size={17} />
+                <Settings size={17} />
               </span>
-              <span>{label}</span>
+              Settings
             </button>
-          ))}
-        </nav>
-
-        <div className="nav-label" style={{ marginTop: 22 }}>
-          Personal
-        </div>
-
-        <button
-          className="nav-item"
-          onClick={() => {
-            setMenuOpen(false);
-            router.push("/settings");
-          }}
-        >
-          <span className="nav-icon">
-            <Settings size={17} />
-          </span>
-          Settings
-        </button>
+          </>
+        )}
 
         <div className="sidebar-bottom">
           <div className="upgrade-card">
@@ -520,8 +663,8 @@ export default function OrbitDashboard() {
           <div className="top-actions">
             <button
               className="search-box"
-              onClick={() => router.push("/tasks")}
-              aria-label="Search tasks"
+              onClick={() => setShowSearch(true)}
+              aria-label="Search workspace"
             >
               <Search size={14} />
               <span>Search workspace</span>
@@ -530,44 +673,49 @@ export default function OrbitDashboard() {
               </span>
             </button>
 
-            <button
-              className="quick-add"
-              onClick={() => setShowQuickAdd(true)}
-            >
-              <Plus size={15} />
-              <span>Quick Add</span>
-            </button>
+            {!isDemo && (
+              <>
+                <button
+                  className="quick-add"
+                  onClick={() => setShowQuickAdd(true)}
+                >
+                  <Plus size={15} />
+                  <span>Quick Add</span>
+                </button>
 
-            <button
-              aria-label="Notifications"
-              className="outline-button notification-button"
-              onClick={() =>
-                alert("Notifications will be connected in a future phase.")
-              }
-            >
-              <Bell size={15} />
-            </button>
+                <button
+                  aria-label="Notifications"
+                  className="outline-button notification-button"
+                  onClick={() =>
+                    alert("Notifications will be connected in a future phase.")
+                  }
+                >
+                  <Bell size={15} />
+                </button>
 
-            <button
-              aria-label="Profile menu"
-              className="avatar"
-              onClick={() => router.push("/settings")}
-            >
-              YO
-            </button>
+                <button
+                  aria-label="Profile menu"
+                  className="avatar"
+                  onClick={() => router.push("/settings")}
+                >
+                  YO
+                </button>
 
-            <button
-              className="outline-button logout-button"
-              onClick={handleLogout}
-              disabled={loggingOut}
-              aria-label="Logout"
-              title="Logout"
-            >
-              <LogOut size={14} />
-              <span className="logout-label">
-                {loggingOut ? "Logging out..." : "Logout"}
-              </span>
-            </button>
+                <button
+                  className="outline-button logout-button"
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                  aria-label="Logout"
+                  title="Logout"
+                >
+                  <LogOut size={14} />
+                  <span className="logout-label">
+                    {loggingOut ? "Logging out..." : "Logout"}
+                  </span>
+                </button>
+              </>
+            )}
+            
           </div>
         </header>
 
@@ -575,9 +723,7 @@ export default function OrbitDashboard() {
           <div className="page-heading">
             <div>
               <div className="eyebrow">{todayLabel}</div>
-
               <h1>Your orbit, at a glance.</h1>
-
               <div className="muted text-sm">
                 Small steps today. Remarkable progress over time.
               </div>
@@ -646,7 +792,7 @@ export default function OrbitDashboard() {
                 value: loadingData
                   ? "…"
                   : String(completedTasks).padStart(2, "0"),
-                foot: "Saved in your account",
+                foot: isDemo ? "Sample demo data" : "Saved in your account",
                 icon: Check,
               },
               {
@@ -730,7 +876,10 @@ export default function OrbitDashboard() {
                   <p className="muted text-sm">Loading tasks...</p>
                 ) : tasks.length === 0 ? (
                   <p className="muted text-sm">
-                    No tasks yet. Use Quick Add to create one.
+                    No tasks yet.{" "}
+                    {isDemo
+                      ? "Sign in as the owner to manage tasks."
+                      : "Use Quick Add to create one."}
                   </p>
                 ) : (
                   tasks.slice(0, 8).map((task) => (
@@ -742,7 +891,7 @@ export default function OrbitDashboard() {
                             : "Mark task complete"
                         }
                         className={`task-check ${task.done ? "checked" : ""}`}
-                        disabled={updatingTaskId === task.id}
+                        disabled={isDemo || updatingTaskId === task.id}
                         onClick={() => void toggleTask(task)}
                       >
                         {task.done ? <Check size={12} /> : null}
@@ -786,21 +935,23 @@ export default function OrbitDashboard() {
                   />
                 </button>
 
-                <button
-                  className="outline-button"
-                  style={{ width: "100%", marginTop: 8 }}
-                  onClick={() => setShowQuickAdd(true)}
-                >
-                  <Plus
-                    size={13}
-                    style={{
-                      display: "inline",
-                      verticalAlign: "middle",
-                      marginRight: 5,
-                    }}
-                  />
-                  Add a task
-                </button>
+                {!isDemo && (
+                  <button
+                    className="outline-button"
+                    style={{ width: "100%", marginTop: 8 }}
+                    onClick={() => setShowQuickAdd(true)}
+                  >
+                    <Plus
+                      size={13}
+                      style={{
+                        display: "inline",
+                        verticalAlign: "middle",
+                        marginRight: 5,
+                      }}
+                    />
+                    Add a task
+                  </button>
+                )}
               </div>
             </section>
 
@@ -811,55 +962,57 @@ export default function OrbitDashboard() {
               </div>
 
               <div className="panel-body">
+                {loadingData ? (
+                  <p className="muted text-sm">Loading deadlines...</p>
+                ) : overdueTasks.length === 0 && dueSoonTasks.length === 0 ? (
+                  <p className="muted text-sm">
+                    No upcoming deadlines. Add due dates to your tasks to see
+                    them here.
+                  </p>
+                ) : (
+                  <>
+                    {overdueTasks.length > 0 && (
+                      <div style={{ marginBottom: 16 }}>
+                        <h3 style={{ color: "#f87171", marginBottom: 8 }}>
+                          Overdue ({overdueTasks.length})
+                        </h3>
+                        {overdueTasks.map((task) => (
+                          <div className="milestone" key={task.id}>
+                            <span
+                              className="milestone-dot"
+                              style={{ background: "#f87171" }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div className="milestone-title">{task.title}</div>
+                              <div className="milestone-date">
+                                {formatDueDate(task.dueDate)}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
-{loadingData ? (
-  <p className="muted text-sm">Loading deadlines...</p>
-) : overdueTasks.length === 0 && dueSoonTasks.length === 0 ? (
-  <p className="muted text-sm">
-    No upcoming deadlines. Add due dates to your tasks to see them here.
-  </p>
-) : (
-  <>
-    {overdueTasks.length > 0 && (
-      <div style={{ marginBottom: 16 }}>
-        <h3 style={{ color: "#f87171", marginBottom: 8 }}>
-          Overdue ({overdueTasks.length})
-        </h3>
-        {overdueTasks.map((task) => (
-          <div className="milestone" key={task.id}>
-            <span className="milestone-dot" style={{ background: "#f87171" }} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="milestone-title">{task.title}</div>
-              <div className="milestone-date">
-                {formatDueDate(task.dueDate)}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    )}
-
-    {dueSoonTasks.length > 0 && (
-      <div>
-        <h3 style={{ marginBottom: 8 }}>
-          Due in the next 7 days ({dueSoonTasks.length})
-        </h3>
-        {dueSoonTasks.slice(0, 5).map((task) => (
-          <div className="milestone" key={task.id}>
-            <span className="milestone-dot" />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="milestone-title">{task.title}</div>
-              <div className="milestone-date">
-                {formatDueDate(task.dueDate)}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    )}
-  </>
-)}
-
+                    {dueSoonTasks.length > 0 && (
+                      <div>
+                        <h3 style={{ marginBottom: 8 }}>
+                          Due in the next 7 days ({dueSoonTasks.length})
+                        </h3>
+                        {dueSoonTasks.slice(0, 5).map((task) => (
+                          <div className="milestone" key={task.id}>
+                            <span className="milestone-dot" />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div className="milestone-title">{task.title}</div>
+                              <div className="milestone-date">
+                                {formatDueDate(task.dueDate)}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </section>
 
@@ -887,18 +1040,16 @@ export default function OrbitDashboard() {
                   className="progress-line"
                   style={{ marginTop: 13, height: 7 }}
                 >
-                  <div
-                    className="progress-fill"
-                    style={{ width: "60%" }}
-                  />
+                  <div className="progress-fill" style={{ width: "60%" }} />
                 </div>
 
                 <p
                   className="muted text-sm"
                   style={{ lineHeight: 1.7, marginTop: 16 }}
                 >
-                  Goals, tasks, and dashboard statistics now use your account
-                  data. More workspace features can be added next.
+                  Goals, tasks, and dashboard statistics now use{" "}
+                  {isDemo ? "sample demo data." : "your account data."} More
+                  workspace features can be added next.
                 </p>
 
                 <button
@@ -917,14 +1068,174 @@ export default function OrbitDashboard() {
 
           <div className="notice">
             <strong style={{ color: "#cbd5e1" }}>Orbit workspace:</strong>{" "}
-            Goals, tasks, and projects are saved in your account.
-            Calendar now brings task dates and project deadlines together.
-            Analytics and Settings can be added next.
+            {isDemo
+              ? "This is a public demo with sample data. Sign in as the owner to manage your workspace."
+              : "Goals, tasks, and projects are saved in your account. Calendar brings task dates and project deadlines together."}
           </div>
         </div>
       </main>
 
-      {showQuickAdd && (
+      {showSearch && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Search workspace"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeSearch();
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 100,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "flex-start",
+            padding: "12vh 16px 20px",
+            background: "#020617c9",
+          }}
+        >
+          <div
+            className="panel"
+            style={{
+              width: "min(100%, 580px)",
+              maxHeight: "70vh",
+              overflowY: "auto",
+              padding: 16,
+              boxShadow: "0 25px 90px #0009",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                borderBottom: "1px solid #303b54",
+                paddingBottom: 12,
+              }}
+            >
+              <Search size={18} color="#94a3b8" />
+
+              <input
+                autoFocus
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search tasks and goals..."
+                aria-label="Search tasks and goals"
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  background: "transparent",
+                  border: 0,
+                  outline: "none",
+                  color: "#f8fafc",
+                  fontSize: 15,
+                  padding: 8,
+                }}
+              />
+
+              <button
+                className="outline-button"
+                onClick={closeSearch}
+                aria-label="Close search"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {!normalizedQuery ? (
+              <p className="muted text-sm" style={{ padding: "18px 8px" }}>
+                Type to search your tasks and goals.
+              </p>
+            ) : (
+              <div style={{ paddingTop: 12 }}>
+                <div className="eyebrow" style={{ margin: "8px 4px" }}>
+                  TASKS ({filteredTasks.length})
+                </div>
+
+                {filteredTasks.map((task) => (
+                  <button
+                    key={`task-${task.id}`}
+                    onClick={() => {
+                      closeSearch();
+                      router.push("/tasks");
+                    }}
+                    style={{
+                      display: "block",
+                      textAlign: "left",
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 8,
+                      background: "transparent",
+                      border: 0,
+                      color: "#e2e8f0",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: 9, alignItems: "center" }}>
+                      <ListTodo size={16} color="#94a3b8" />
+                      <span>{task.title}</span>
+                    </div>
+                    {task.description && (
+                      <div
+                        className="muted text-sm"
+                        style={{ margin: "5px 0 0 25px" }}
+                      >
+                        {task.description}
+                      </div>
+                    )}
+                  </button>
+                ))}
+
+                <div className="eyebrow" style={{ margin: "16px 4px 8px" }}>
+                  GOALS ({filteredGoals.length})
+                </div>
+
+                {filteredGoals.map((goal) => (
+                  <button
+                    key={`goal-${goal.id}`}
+                    onClick={() => {
+                      closeSearch();
+                      router.push("/goals");
+                    }}
+                    style={{
+                      display: "block",
+                      textAlign: "left",
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 8,
+                      background: "transparent",
+                      border: 0,
+                      color: "#e2e8f0",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: 9, alignItems: "center" }}>
+                      <Target size={16} color="#94a3b8" />
+                      <span>{goal.title}</span>
+                    </div>
+                    {goal.description && (
+                      <div
+                        className="muted text-sm"
+                        style={{ margin: "5px 0 0 25px" }}
+                      >
+                        {goal.description}
+                      </div>
+                    )}
+                  </button>
+                ))}
+
+                {filteredTasks.length === 0 && filteredGoals.length === 0 && (
+                  <p className="muted text-sm" style={{ padding: 12 }}>
+                    No results found for &quot;{searchQuery}&quot;.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showQuickAdd && !isDemo && (
         <div
           role="dialog"
           aria-modal="true"
