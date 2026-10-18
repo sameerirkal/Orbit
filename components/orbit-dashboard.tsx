@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import {
@@ -36,75 +36,179 @@ const navigation = [
   { label: "Analytics", icon: TrendingUp },
 ];
 
-const initialTasks = [
-  {
-    id: 1,
-    title: "Finalize the Orbit design system",
-    due: "Today · 4:00 PM",
-    priority: "high",
-    done: false,
-  },
-  {
-    id: 2,
-    title: "Set up the project repository",
-    due: "Today · 6:00 PM",
-    priority: "medium",
-    done: false,
-  },
-  {
-    id: 3,
-    title: "Outline the first development milestone",
-    due: "Tomorrow",
-    priority: "medium",
-    done: true,
-  },
-];
+type GoalRow = {
+  id: string;
+  title: string;
+  description: string | null;
+  progress: number | null;
+  status: string | null;
+  target_date: string | null;
+};
 
-const goals = [
-  {
-    icon: Compass,
-    title: "Build Orbit",
-    subtitle: "Product · 5 phases",
-    progress: 28,
-  },
-  {
-    icon: Activity,
-    title: "Grow my YouTube channel",
-    subtitle: "Creator journey · 4 projects",
-    progress: 46,
-  },
-  {
-    icon: Flag,
-    title: "Level up my skills",
-    subtitle: "Learning · 3 projects",
-    progress: 17,
-  },
-];
+type TaskRow = {
+  id: string;
+  title: string;
+  description: string | null;
+  goal_id: string | null;
+  priority: string | null;
+  due_date: string | null;
+  completed: boolean | null;
+};
+
+type DashboardGoal = {
+  id: string;
+  title: string;
+  subtitle: string;
+  progress: number;
+  icon: typeof Compass;
+};
+
+type DashboardTask = {
+  id: string;
+  title: string;
+  due: string;
+  priority: string;
+  done: boolean;
+};
+
+function formatDueDate(value: string | null) {
+  if (!value) return "No due date";
+
+  const date = new Date(`${value.slice(0, 10)}T12:00:00`);
+  const today = new Date();
+  const tomorrow = new Date();
+
+  today.setHours(0, 0, 0, 0);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0);
+
+  if (Number.isNaN(date.getTime())) return "No due date";
+
+  const dateOnly = new Date(date);
+  dateOnly.setHours(0, 0, 0, 0);
+
+  if (dateOnly.getTime() === today.getTime()) return "Today";
+  if (dateOnly.getTime() === tomorrow.getTime()) return "Tomorrow";
+
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function getPriority(value: string | null) {
+  const normalized = (value ?? "Medium").toLowerCase();
+
+  if (normalized === "high") return "high";
+  if (normalized === "low") return "low";
+
+  return "medium";
+}
 
 export default function OrbitDashboard() {
   const router = useRouter();
 
   const [authChecking, setAuthChecking] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
   const [active, setActive] = useState("Dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [tasks, setTasks] = useState(initialTasks);
+
+  const [tasks, setTasks] = useState<DashboardTask[]>([]);
+  const [goals, setGoals] = useState<DashboardGoal[]>([]);
+  const [totalGoals, setTotalGoals] = useState(0);
+  const [completedGoals, setCompletedGoals] = useState(0);
+  const [loadingData, setLoadingData] = useState(true);
+  const [dashboardError, setDashboardError] = useState("");
+
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [newTask, setNewTask] = useState("");
+  const [addingTask, setAddingTask] = useState(false);
+  const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
+
+  const [loggingOutError, setLoggingOutError] = useState("");
+
+  const loadDashboardData = useCallback(async (currentUserId: string) => {
+    setLoadingData(true);
+    setDashboardError("");
+
+    try {
+      const [goalsResult, tasksResult] = await Promise.all([
+        supabase
+          .from("goals")
+          .select("id, title, description, progress, status, target_date")
+          .eq("user_id", currentUserId)
+          .order("created_at", { ascending: false }),
+
+        supabase
+          .from("tasks")
+          .select(
+            "id, title, description, goal_id, priority, due_date, completed"
+          )
+          .eq("user_id", currentUserId)
+          .order("created_at", { ascending: false }),
+      ]);
+
+      if (goalsResult.error) throw goalsResult.error;
+      if (tasksResult.error) throw tasksResult.error;
+
+      const goalRows = (goalsResult.data ?? []) as GoalRow[];
+      const taskRows = (tasksResult.data ?? []) as TaskRow[];
+
+      setTotalGoals(goalRows.length);
+      setCompletedGoals(
+        goalRows.filter((goal) => goal.status === "Completed").length
+      );
+
+      setGoals(
+        goalRows.slice(0, 3).map((goal, index) => ({
+          id: goal.id,
+          title: goal.title,
+          subtitle: goal.target_date
+            ? `Target · ${formatDueDate(goal.target_date)}`
+            : goal.description || "Personal goal",
+          progress: Math.min(100, Math.max(0, goal.progress ?? 0)),
+          icon: index === 0 ? Compass : index === 1 ? Activity : Flag,
+        }))
+      );
+
+      setTasks(
+        taskRows.map((task) => ({
+          id: task.id,
+          title: task.title,
+          due: formatDueDate(task.due_date),
+          priority: getPriority(task.priority),
+          done: Boolean(task.completed),
+        }))
+      );
+    } catch (error) {
+      console.error("Dashboard data load failed:", error);
+      setDashboardError(
+        "Dashboard data load nahi ho paaya. Please refresh karke try karo."
+      );
+    } finally {
+      setLoadingData(false);
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
 
     async function checkSession() {
-      const { data, error } = await supabase.auth.getSession();
+      const { data, error } = await supabase.auth.getUser();
 
       if (!mounted) return;
 
-      if (error || !data.session) {
+      if (error || !data.user) {
         router.replace("/login");
-      } else {
-        setAuthChecking(false);
+        return;
       }
+
+      setUserId(data.user.id);
+      setAuthChecking(false);
+      void loadDashboardData(data.user.id);
     }
 
     void checkSession();
@@ -115,6 +219,7 @@ export default function OrbitDashboard() {
       if (!session) {
         router.replace("/login");
       } else if (mounted) {
+        setUserId(session.user.id);
         setAuthChecking(false);
       }
     });
@@ -123,18 +228,19 @@ export default function OrbitDashboard() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, loadDashboardData]);
 
   async function handleLogout() {
     if (loggingOut) return;
 
     setLoggingOut(true);
+    setLoggingOutError("");
 
     const { error } = await supabase.auth.signOut();
 
     if (error) {
       setLoggingOut(false);
-      alert("Logout nahi hua. Dobara try karo.");
+      setLoggingOutError("Logout nahi hua. Dobara try karo.");
       return;
     }
 
@@ -142,33 +248,99 @@ export default function OrbitDashboard() {
     router.refresh();
   }
 
-  function addTask() {
+  async function addTask() {
     const title = newTask.trim();
 
-    if (!title) return;
+    if (!title || !userId || addingTask) return;
 
-    setTasks((current) => [
-      ...current,
-      {
-        id: Date.now(),
-        title,
-        due: "No due date",
-        priority: "medium",
-        done: false,
-      },
-    ]);
+    setAddingTask(true);
+    setDashboardError("");
 
-    setNewTask("");
-    setShowQuickAdd(false);
+    try {
+      const { data, error } = await supabase
+        .from("tasks")
+        .insert({
+          user_id: userId,
+          title,
+          description: "",
+          priority: "Medium",
+          completed: false,
+        })
+        .select(
+          "id, title, description, goal_id, priority, due_date, completed"
+        )
+        .single();
+
+      if (error) throw error;
+
+      const row = data as TaskRow;
+
+      setTasks((current) => [
+        {
+          id: row.id,
+          title: row.title,
+          due: formatDueDate(row.due_date),
+          priority: getPriority(row.priority),
+          done: Boolean(row.completed),
+        },
+        ...current,
+      ]);
+
+      setNewTask("");
+      setShowQuickAdd(false);
+    } catch (error) {
+      console.error("Task creation failed:", error);
+      setDashboardError(
+        "Task save nahi hua. Please internet aur Supabase settings check karo."
+      );
+    } finally {
+      setAddingTask(false);
+    }
+  }
+
+  async function toggleTask(task: DashboardTask) {
+    if (updatingTaskId) return;
+
+    setUpdatingTaskId(task.id);
+    setDashboardError("");
+
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .update({ completed: !task.done })
+        .eq("id", task.id)
+        .eq("user_id", userId);
+
+      if (error) throw error;
+
+      setTasks((current) =>
+        current.map((item) =>
+          item.id === task.id ? { ...item, done: !task.done } : item
+        )
+      );
+    } catch (error) {
+      console.error("Task update failed:", error);
+      setDashboardError("Task update nahi hua. Dobara try karo.");
+    } finally {
+      setUpdatingTaskId(null);
+    }
   }
 
   if (authChecking) {
     return (
-      <div style={{ padding: 40, color: "white" }}>
-        Checking login...
-      </div>
+      <div style={{ padding: 40, color: "white" }}>Checking login...</div>
     );
   }
+
+  const activeGoals = goals.filter((goal) => goal.progress < 100).length;
+  const completedTasks = tasks.filter((task) => task.done).length;
+  const overallProgress =
+    totalGoals > 0
+      ? Math.round(
+          goals.reduce((sum, goal) => sum + goal.progress, 0) /
+            Math.max(1, goals.length)
+        )
+      : 0;
 
   return (
     <div className="app-shell">
@@ -341,7 +513,13 @@ export default function OrbitDashboard() {
         <div className="content">
           <div className="page-heading">
             <div>
-              <div className="eyebrow">Sunday, October 18</div>
+              <div className="eyebrow">
+                {new Date().toLocaleDateString(undefined, {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </div>
 
               <h1>
                 {active === "Dashboard"
@@ -380,30 +558,52 @@ export default function OrbitDashboard() {
             </button>
           </div>
 
+          {dashboardError && (
+            <div className="notice" role="alert">
+              {dashboardError}{" "}
+              <button
+                className="outline-button"
+                onClick={() => {
+                  if (userId) void loadDashboardData(userId);
+                }}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {loggingOutError && (
+            <div className="notice" role="alert">
+              {loggingOutError}
+            </div>
+          )}
+
           <section className="stats-grid" aria-label="Workspace overview">
             {[
               {
                 label: "Active goals",
-                value: "03",
+                value: loadingData ? "…" : String(activeGoals).padStart(2, "0"),
                 foot: "Across your workspace",
                 icon: Target,
               },
               {
                 label: "Projects in motion",
                 value: "08",
-                foot: "2 need attention",
+                foot: "Demo content",
                 icon: FolderKanban,
               },
               {
                 label: "Tasks completed",
-                value: "24",
-                foot: "This is demo content",
+                value: loadingData
+                  ? "…"
+                  : String(completedTasks).padStart(2, "0"),
+                foot: "Saved in your account",
                 icon: Check,
               },
               {
                 label: "Overall progress",
-                value: "36%",
-                foot: "Across demo goals",
+                value: loadingData ? "…" : `${overallProgress}%`,
+                foot: "Across your visible goals",
                 icon: TrendingUp,
               },
             ].map(({ label, value, foot, icon: Icon }) => (
@@ -437,26 +637,34 @@ export default function OrbitDashboard() {
               </div>
 
               <div className="panel-body">
-                {goals.map(({ icon: Icon, title, subtitle, progress }) => (
-                  <div className="goal-row" key={title}>
-                    <div className="goal-badge">
-                      <Icon size={19} />
-                    </div>
-
-                    <div className="goal-info">
-                      <div className="goal-title">{title}</div>
-                      <div className="goal-meta">{subtitle}</div>
-                      <div className="progress-line">
-                        <div
-                          className="progress-fill"
-                          style={{ width: `${progress}%` }}
-                        />
+                {loadingData ? (
+                  <p className="muted text-sm">Loading goals...</p>
+                ) : goals.length === 0 ? (
+                  <p className="muted text-sm">
+                    No goals yet. Create your first goal to see it here.
+                  </p>
+                ) : (
+                  goals.map(({ id, icon: Icon, title, subtitle, progress }) => (
+                    <div className="goal-row" key={id}>
+                      <div className="goal-badge">
+                        <Icon size={19} />
                       </div>
-                    </div>
 
-                    <div className="percent">{progress}%</div>
-                  </div>
-                ))}
+                      <div className="goal-info">
+                        <div className="goal-title">{title}</div>
+                        <div className="goal-meta">{subtitle}</div>
+                        <div className="progress-line">
+                          <div
+                            className="progress-fill"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="percent">{progress}%</div>
+                    </div>
+                  ))
+                )}
               </div>
             </section>
 
@@ -469,48 +677,53 @@ export default function OrbitDashboard() {
               </div>
 
               <div className="panel-body">
-                {tasks.map((task) => (
-                  <div className="task-row" key={task.id}>
-                    <button
-                      aria-label={
-                        task.done
-                          ? "Mark task incomplete"
-                          : "Mark task complete"
-                      }
-                      className={`task-check ${task.done ? "checked" : ""}`}
-                      onClick={() =>
-                        setTasks((current) =>
-                          current.map((item) =>
-                            item.id === task.id
-                              ? { ...item, done: !item.done }
-                              : item
-                          )
-                        )
-                      }
-                    >
-                      {task.done ? <Check size={12} /> : null}
-                    </button>
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        className="task-title"
-                        style={{
-                          textDecoration: task.done ? "line-through" : "none",
-                          color: task.done ? "#74819a" : "#e2e8f0",
-                        }}
+                {loadingData ? (
+                  <p className="muted text-sm">Loading tasks...</p>
+                ) : tasks.length === 0 ? (
+                  <p className="muted text-sm">
+                    No tasks yet. Use Quick Add to create one.
+                  </p>
+                ) : (
+                  tasks.slice(0, 8).map((task) => (
+                    <div className="task-row" key={task.id}>
+                      <button
+                        aria-label={
+                          task.done
+                            ? "Mark task incomplete"
+                            : "Mark task complete"
+                        }
+                        className={`task-check ${task.done ? "checked" : ""}`}
+                        disabled={updatingTaskId === task.id}
+                        onClick={() => void toggleTask(task)}
                       >
-                        {task.title}
-                      </div>
-                      <div className="task-due">{task.due}</div>
-                    </div>
+                        {task.done ? <Check size={12} /> : null}
+                      </button>
 
-                    {!task.done && (
-                      <span className={`priority ${task.priority}`}>
-                        {task.priority === "high" ? "High" : "Medium"}
-                      </span>
-                    )}
-                  </div>
-                ))}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          className="task-title"
+                          style={{
+                            textDecoration: task.done ? "line-through" : "none",
+                            color: task.done ? "#74819a" : "#e2e8f0",
+                          }}
+                        >
+                          {task.title}
+                        </div>
+                        <div className="task-due">{task.due}</div>
+                      </div>
+
+                      {!task.done && (
+                        <span className={`priority ${task.priority}`}>
+                          {task.priority === "high"
+                            ? "High"
+                            : task.priority === "low"
+                              ? "Low"
+                              : "Medium"}
+                        </span>
+                      )}
+                    </div>
+                  ))
+                )}
 
                 <button
                   className="outline-button"
@@ -600,8 +813,8 @@ export default function OrbitDashboard() {
                   className="muted text-sm"
                   style={{ lineHeight: 1.7, marginTop: 16 }}
                 >
-                  The UI shell is the first step. Authentication, cloud saving,
-                  and full goal management come in later phases.
+                  Your goals and tasks now connect to your Orbit account.
+                  Project planning features are coming next.
                 </p>
 
                 <button
@@ -619,11 +832,9 @@ export default function OrbitDashboard() {
           </div>
 
           <div className="notice">
-            <strong style={{ color: "#cbd5e1" }}>Starter preview:</strong>{" "}
-            dashboard cards contain illustrative sample data. Task checkboxes
-            and Quick Add work in temporary page state; data is not saved after
-            refresh. Authentication is checked, but database saving is not
-            connected yet.
+            <strong style={{ color: "#cbd5e1" }}>Orbit workspace:</strong>{" "}
+            Goals and tasks are loaded from your account. Project and milestone
+            cards are still demo content.
           </div>
         </div>
       </main>
@@ -643,7 +854,7 @@ export default function OrbitDashboard() {
             background: "#020617b8",
           }}
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
+            if (event.target === event.currentTarget && !addingTask) {
               setShowQuickAdd(false);
             }
           }}
@@ -677,6 +888,7 @@ export default function OrbitDashboard() {
               <button
                 className="outline-button"
                 aria-label="Close dialog"
+                disabled={addingTask}
                 onClick={() => setShowQuickAdd(false)}
               >
                 <X size={15} />
@@ -690,10 +902,14 @@ export default function OrbitDashboard() {
             <input
               id="task-title"
               autoFocus
+              maxLength={200}
               value={newTask}
               onChange={(event) => setNewTask(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter") addTask();
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void addTask();
+                }
               }}
               placeholder="e.g. Sketch the roadmap page"
               style={{
@@ -718,14 +934,19 @@ export default function OrbitDashboard() {
             >
               <button
                 className="outline-button"
+                disabled={addingTask}
                 onClick={() => setShowQuickAdd(false)}
               >
                 Cancel
               </button>
 
-              <button className="quick-add" onClick={addTask}>
+              <button
+                className="quick-add"
+                disabled={addingTask || !newTask.trim()}
+                onClick={() => void addTask()}
+              >
                 <Plus size={14} />
-                <span>Create task</span>
+                <span>{addingTask ? "Saving..." : "Create task"}</span>
               </button>
             </div>
           </div>
@@ -733,4 +954,4 @@ export default function OrbitDashboard() {
       )}
     </div>
   );
-      }
+}
