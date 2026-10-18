@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 import {
   Activity, ArrowUpRight, Bell, CalendarDays, Check, ChevronDown, CircleHelp,
   Compass, Flag, FolderKanban, LayoutDashboard, ListTodo, Menu, Plus, Search,
@@ -29,6 +31,39 @@ const goals = [
 ];
 
 export default function OrbitDashboard() {
+    const router = useRouter();
+  const [authChecking, setAuthChecking] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
+
+      if (error || !data.session) {
+        router.replace("/login");
+      } else {
+        setAuthChecking(false);
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) router.replace("/login");
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [router]);
+
+  if (authChecking) {
+    return <div style={{ padding: 40, color: "white" }}>Checking login...</div>;
+  }
+
+  
   const [active, setActive] = useState("Dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
   const [tasks, setTasks] = useState(initialTasks);
