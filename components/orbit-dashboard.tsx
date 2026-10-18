@@ -16,6 +16,7 @@ import {
   FolderKanban,
   LayoutDashboard,
   ListTodo,
+  LogOut,
   Menu,
   Plus,
   Search,
@@ -84,6 +85,7 @@ export default function OrbitDashboard() {
   const router = useRouter();
 
   const [authChecking, setAuthChecking] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [active, setActive] = useState("Dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
   const [tasks, setTasks] = useState(initialTasks);
@@ -123,6 +125,23 @@ export default function OrbitDashboard() {
     };
   }, [router]);
 
+  async function handleLogout() {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      setLoggingOut(false);
+      alert("Logout nahi hua. Dobara try karo.");
+      return;
+    }
+
+    router.replace("/login");
+    router.refresh();
+  }
+
   function addTask() {
     const title = newTask.trim();
 
@@ -143,7 +162,6 @@ export default function OrbitDashboard() {
     setShowQuickAdd(false);
   }
 
-  // All hooks run before this conditional return.
   if (authChecking) {
     return (
       <div style={{ padding: 40, color: "white" }}>
@@ -180,7 +198,7 @@ export default function OrbitDashboard() {
                 setMenuOpen(false);
 
                 if (label === "Goals") {
-                  window.location.href = "/goals";
+                  router.push("/goals");
                 } else {
                   setActive(label);
                 }
@@ -225,9 +243,7 @@ export default function OrbitDashboard() {
 
             <button
               className="outline-button"
-              onClick={() => {
-                window.location.href = "/goals";
-              }}
+              onClick={() => router.push("/goals")}
             >
               Explore goals{" "}
               <ArrowUpRight
@@ -254,7 +270,7 @@ export default function OrbitDashboard() {
 
       <main className="main-area">
         <header className="topbar">
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div className="topbar-left">
             <button
               className="mobile-menu"
               aria-label="Open navigation"
@@ -283,24 +299,16 @@ export default function OrbitDashboard() {
               className="quick-add"
               onClick={() => setShowQuickAdd(true)}
             >
-              <Plus
-                size={15}
-                style={{
-                  display: "inline",
-                  verticalAlign: "middle",
-                  marginRight: 5,
-                }}
-              />
-              Quick Add
+              <Plus size={15} />
+              <span>Quick Add</span>
             </button>
 
             <button
               aria-label="Notifications"
-              className="outline-button"
+              className="outline-button notification-button"
               onClick={() =>
                 alert("Notifications will be connected in a future phase.")
               }
-              style={{ padding: 9 }}
             >
               <Bell size={15} />
             </button>
@@ -313,6 +321,19 @@ export default function OrbitDashboard() {
               }
             >
               YO
+            </button>
+
+            <button
+              className="outline-button logout-button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              aria-label="Logout"
+              title="Logout"
+            >
+              <LogOut size={14} />
+              <span className="logout-label">
+                {loggingOut ? "Logging out..." : "Logout"}
+              </span>
             </button>
           </div>
         </header>
@@ -337,9 +358,7 @@ export default function OrbitDashboard() {
 
             <button
               className="outline-button"
-              onClick={() => {
-                window.location.href = "/goals";
-              }}
+              onClick={() => router.push("/goals")}
             >
               <Target
                 size={14}
@@ -407,9 +426,7 @@ export default function OrbitDashboard() {
                 <h2>Goals in motion</h2>
                 <button
                   className="outline-button"
-                  onClick={() => {
-                    window.location.href = "/goals";
-                  }}
+                  onClick={() => router.push("/goals")}
                 >
                   All goals{" "}
                   <ArrowUpRight
@@ -707,15 +724,8 @@ export default function OrbitDashboard() {
               </button>
 
               <button className="quick-add" onClick={addTask}>
-                <Plus
-                  size={14}
-                  style={{
-                    display: "inline",
-                    verticalAlign: "middle",
-                    marginRight: 5,
-                  }}
-                />
-                Create task
+                <Plus size={14} />
+                <span>Create task</span>
               </button>
             </div>
           </div>
@@ -723,4 +733,4 @@ export default function OrbitDashboard() {
       )}
     </div>
   );
-                    }
+      }
